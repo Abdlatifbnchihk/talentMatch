@@ -1,0 +1,678 @@
+# =============================================================================
+# TalentMatch — AI Spec-Driven Development Config
+# Version: 1.0.0
+# Stack: Laravel 11, laravel/ai SDK, MySQL, Redis (queues)
+# =============================================================================
+
+project:
+  name: TalentMatch
+  description: >
+    Internal HR tool that automates candidate pre-screening. HR agents
+    create job offers, submit CVs as text, and receive structured AI
+    analysis (skills, matching score, recommendation). A conversational
+    assistant with memory and function-calling tools allows follow-up
+    questions about any analyzed candidate.
+  locale: en
+  timezone: Africa/Casablanca
+
+# =============================================================================
+# DATABASE SCHEMA
+# =============================================================================
+
+database:
+  tables:
+
+    users:
+      purpose: HR agents who log in and own job offers
+      columns:
+        id: bigint PK auto-increment
+        name: string(100) not null
+        email: string(150) unique not null
+        password: string hashed not null
+        remember_token: string(100) nullable
+        created_at: timestamp
+        updated_at: timestamp
+      indexes:
+        - email (unique)
+
+    job_offers:
+      purpose: Job postings created by HR agents
+      columns:
+        id: bigint PK auto-increment
+        user_id: bigint FK -> users.id cascade delete
+        title: string(200) not null
+        description: text not null
+        required_skills: json not null   # ["PHP", "Laravel", "MySQL"]
+        min_experience_years: int default 0
+        status: enum(active, closed) default active
+        created_at: timestamp
+        updated_at: timestamp
+      indexes:
+        - user_id
+        - status
+
+    candidates:
+      purpose: CV submissions linked to a job offer
+      columns:
+        id: bigint PK auto-increment
+        job_offer_id: bigint FK -> job_offers.id cascade delete
+        name: string(200) not null
+        cv_text: longtext not null
+        status: enum(pending, analyzed) default pending
+        created_at: timestamp
+        updated_at: timestamp
+      indexes:
+        - job_offer_id
+        - status
+
+    analyses:
+      purpose: Structured AI output for one candidate (1-to-1 with candidates)
+      columns:
+        id: bigint PK auto-increment
+        candidate_id: bigint FK -> candidates.id cascade delete unique
+        extracted_skills: json not null     # ["PHP", "Vue.js"]
+        years_experience: int not null
+        education_level: string(100) not null
+        languages: json not null            # ["French", "Arabic", "English"]
+        matching_score: int not null        # 0–100
+        strengths: json not null            # ["Strong Laravel background"]
+        gaps: json not null                 # ["No cloud experience"]
+        missing_skills: json not null       # ["Docker", "AWS"]
+        recommendation: enum(convoquer, attente, rejeter) not null
+        justification: text not null
+        created_at: timestamp
+        updated_at: timestamp
+      indexes:
+        - candidate_id (unique)
+        - matching_score
+        - recommendation
+
+    conversations:
+      purpose: Chat sessions opened by an HR agent about a specific candidate
+      columns:
+        id: bigint PK auto-increment
+        candidate_id: bigint FK -> candidates.id cascade delete
+        user_id: bigint FK -> users.id cascade delete
+        title: string(255) nullable   # auto-generated or user-defined
+        created_at: timestamp
+        updated_at: timestamp
+      indexes:
+        - candidate_id
+        - user_id
+
+    messages:
+      purpose: Individual turns persisted for conversation memory
+      columns:
+        id: bigint PK auto-increment
+        conversation_id: bigint FK -> conversations.id cascade delete
+        role: enum(user, assistant, tool) not null
+        content: text not null
+        tool_calls: json nullable   # stores tool name + args + result for agent replay
+        created_at: timestamp
+      indexes:
+        - conversation_id
+
+# =============================================================================
+# ELOQUENT MODELS
+# =============================================================================
+
+models:
+
+  User:
+    table: users
+    relations:
+      - hasMany: JobOffer
+      - hasMany: Conversation
+    fillable: [name, email, password]
+    hidden: [password, remember_token]
+
+  JobOffer:
+    table: job_offers
+    relations:
+      - belongsTo: User
+      - hasMany: Candidate
+    fillable: [user_id, title, description, required_skills, min_experience_years, status]
+    casts:
+      required_skills: array
+      status: App\Enums\JobOfferStatus
+
+  Candidate:
+    table: candidates
+    relations:
+      - belongsTo: JobOffer
+      - hasOne: Analysis
+      - hasMany: Conversation
+    fillable: [job_offer_id, name, cv_text, status]
+    casts:
+      status: App\Enums\CandidateStatus
+
+  Analysis:
+    table: analyses
+    relations:
+      - belongsTo: Candidate
+    fillable:
+      - candidate_id
+      - extracted_skills
+      - years_experience
+      - education_level
+      - languages
+      - matching_score
+      - strengths
+      - gaps
+      - missing_skills
+      - recommendation
+      - justification
+    casts:
+      extracted_skills: array
+      languages: array
+      strengths: array
+      gaps: array
+      missing_skills: array
+      recommendation: App\Enums\Recommendation
+      matching_score: integer
+
+  Conversation:
+    table: conversations
+    relations:
+      - belongsTo: Candidate
+      - belongsTo: User
+      - hasMany: Message
+    fillable: [candidate_id, user_id, title]
+
+  Message:
+    table: messages
+    relations:
+      - belongsTo: Conversation
+    fillable: [conversation_id, role, content, tool_calls]
+    casts:
+      tool_calls: array
+      role: App\Enums\MessageRole
+
+# =============================================================================
+# ENUMS
+# =============================================================================
+
+enums:
+
+  JobOfferStatus:
+    path: App\Enums\JobOfferStatus
+    cases:
+      Active: active
+      Closed: closed
+
+  CandidateStatus:
+    path: App\Enums\CandidateStatus
+    cases:
+      Pending: pending
+      Analyzed: analyzed
+
+  Recommendation:
+    path: App\Enums\Recommendation
+    cases:
+      Convoquer: convoquer   # Invite to interview
+      Attente: attente       # Hold / on waitlist
+      Rejeter: rejeter       # Reject
+    labels:
+      convoquer: "Invite to interview"
+      attente: "On hold"
+      rejeter: "Reject"
+    badge_colors:
+      convoquer: green
+      attente: amber
+      rejeter: red
+
+  MessageRole:
+    path: App\Enums\MessageRole
+    cases:
+      User: user
+      Assistant: assistant
+      Tool: tool
+
+# =============================================================================
+# FORM REQUESTS (validation)
+# =============================================================================
+
+form_requests:
+
+  StoreJobOfferRequest:
+    rules:
+      title: required|string|max:200
+      description: required|string
+      required_skills: required|array|min:1
+      required_skills.*: string|max:100
+      min_experience_years: required|integer|min:0|max:50
+
+  UpdateJobOfferRequest:
+    extends: StoreJobOfferRequest
+    extra_rules:
+      status: sometimes|in:active,closed
+
+  StoreCandidateRequest:
+    rules:
+      name: required|string|max:200
+      cv_text: required|string|min:50
+
+  StoreChatMessageRequest:
+    rules:
+      message: required|string|max:2000
+
+# =============================================================================
+# CONTROLLERS
+# =============================================================================
+
+controllers:
+
+  AuthController:
+    methods:
+      showRegister: GET /register
+      register: POST /register -> redirect dashboard
+      showLogin: GET /login
+      login: POST /login -> redirect dashboard
+      logout: POST /logout -> redirect login
+    middleware: []
+
+  JobOfferController:
+    resource: true
+    routes:
+      index: GET /offers — list HR agent's offers + candidate count
+      create: GET /offers/create
+      store: POST /offers
+      show: GET /offers/{offer} — offer detail + candidates with scores
+      edit: GET /offers/{offer}/edit
+      update: PUT /offers/{offer}
+      destroy: DELETE /offers/{offer}
+    middleware: [auth]
+    policy: JobOfferPolicy (user can only manage own offers)
+
+  CandidateController:
+    methods:
+      create: GET /offers/{offer}/candidates/create
+      store: POST /offers/{offer}/candidates — triggers AnalyzeCandidateJob
+      show: GET /offers/{offer}/candidates/{candidate} — show analysis detail
+    middleware: [auth]
+
+  ChatController:
+    methods:
+      show: GET /candidates/{candidate}/chat — conversation UI
+      message: POST /candidates/{candidate}/chat — send message, get AI reply
+    middleware: [auth]
+
+# =============================================================================
+# ROUTES (web.php)
+# =============================================================================
+
+routes:
+  auth:
+    - GET  /register -> AuthController@showRegister
+    - POST /register -> AuthController@register
+    - GET  /login    -> AuthController@showLogin
+    - POST /login    -> AuthController@login
+    - POST /logout   -> AuthController@logout
+
+  offers:
+    - GET    /offers                              -> JobOfferController@index
+    - GET    /offers/create                       -> JobOfferController@create
+    - POST   /offers                              -> JobOfferController@store
+    - GET    /offers/{offer}                      -> JobOfferController@show
+    - GET    /offers/{offer}/edit                 -> JobOfferController@edit
+    - PUT    /offers/{offer}                      -> JobOfferController@update
+    - DELETE /offers/{offer}                      -> JobOfferController@destroy
+
+  candidates:
+    - GET  /offers/{offer}/candidates/create      -> CandidateController@create
+    - POST /offers/{offer}/candidates             -> CandidateController@store
+    - GET  /offers/{offer}/candidates/{candidate} -> CandidateController@show
+
+  chat:
+    - GET  /candidates/{candidate}/chat           -> ChatController@show
+    - POST /candidates/{candidate}/chat           -> ChatController@message
+
+# =============================================================================
+# JOBS & QUEUES
+# =============================================================================
+
+jobs:
+
+  AnalyzeCandidateJob:
+    queue: ai-analysis
+    triggered_by: CandidateController@store (after candidate saved)
+    steps:
+      1: Load candidate + job offer from DB
+      2: Build prompt with CV text + job requirements
+      3: Call laravel/ai with structured output schema (JSON contract)
+      4: Parse response into typed AnalysisData DTO
+      5: Persist Analysis model
+      6: Update candidate status to 'analyzed'
+    on_failure: Log error, keep candidate status as 'pending'
+    retries: 2
+    timeout: 90s
+
+# =============================================================================
+# AI LAYER 1 — STRUCTURED OUTPUT
+# =============================================================================
+
+ai_structured_output:
+
+  driver: laravel/ai
+  model: claude-sonnet-4-6
+  schema_class: App\AI\Schemas\CandidateAnalysisSchema
+
+  json_contract:
+    extracted_skills: "array<string>"
+    years_experience: integer
+    education_level: string
+    languages: "array<string>"
+    matching_score: "integer 0-100"
+    strengths: "array<string>"
+    gaps: "array<string>"
+    missing_skills: "array<string>"
+    recommendation: "enum: convoquer | attente | rejeter"
+    justification: string
+
+  prompt_template: |
+    You are an expert HR analyst. Analyze the following CV against the job offer requirements.
+
+    JOB OFFER: {job_title}
+    REQUIRED SKILLS: {required_skills}
+    MINIMUM EXPERIENCE: {min_experience_years} years
+    DESCRIPTION: {job_description}
+
+    CANDIDATE CV:
+    {cv_text}
+
+    Return a structured JSON analysis following the exact schema provided.
+    Be objective, specific, and base all judgments on the CV content only.
+
+# =============================================================================
+# AI LAYER 2 — CONVERSATIONAL AGENT
+# =============================================================================
+
+ai_agent:
+
+  driver: laravel/ai
+  model: claude-sonnet-4-6
+  memory: database   # persisted in messages table
+
+  system_prompt: |
+    You are TalentMatch Assistant, an expert HR analyst assistant.
+    You help HR agents understand candidate analyses, prepare interview questions,
+    and compare candidates. You always base your answers on real data fetched
+    via your tools — never invent scores, skills, or details.
+    Respond in the same language the HR agent uses.
+
+  tools:
+
+    getCandidateAnalysis:
+      class: App\AI\Tools\GetCandidateAnalysisTool
+      description: Fetches the full structured analysis for a candidate by ID
+      parameters:
+        candidate_id: integer (required)
+      returns: Analysis model data as array
+
+    getJobRequirements:
+      class: App\AI\Tools\GetJobRequirementsTool
+      description: Fetches the job offer criteria (title, skills, experience) by offer ID
+      parameters:
+        job_offer_id: integer (required)
+      returns: JobOffer model data as array
+
+    compareCandidates:
+      class: App\AI\Tools\CompareCandidatesTool
+      description: Compares two analyzed candidates on the same job offer
+      parameters:
+        candidate_id_1: integer (required)
+        candidate_id_2: integer (required)
+      returns: Side-by-side comparison object with scores, strengths, gaps, recommendation
+
+# =============================================================================
+# VIEWS
+# =============================================================================
+
+views:
+
+  layouts:
+    - app.blade.php   # main layout with nav, auth links
+
+  auth:
+    - register.blade.php
+    - login.blade.php
+
+  offers:
+    - index.blade.php    # table of offers, candidate count, create button
+    - create.blade.php   # form: title, description, skills (tag input), min exp
+    - edit.blade.php     # same form pre-filled
+    - show.blade.php     # offer detail + candidates table sorted by score
+
+  candidates:
+    - create.blade.php   # form: candidate name, CV text area, submit
+    - show.blade.php     # analysis detail: score badge, recommendation pill,
+                         # strengths/gaps/missing skills lists, justification
+
+  chat:
+    - show.blade.php     # conversation UI: message thread + input box
+
+# =============================================================================
+# POLICIES
+# =============================================================================
+
+policies:
+  JobOfferPolicy:
+    model: JobOffer
+    rules:
+      view: offer.user_id === auth.id
+      update: offer.user_id === auth.id
+      delete: offer.user_id === auth.id
+
+# =============================================================================
+# JIRA TASKS / GITHUB BRANCHES
+# =============================================================================
+
+jira_tasks:
+
+  sprint_1_auth:
+    - id: TM-01
+      title: "Set up Laravel project with auth scaffolding"
+      branch: feature/TM-01-project-setup
+      files: [routes/web.php, app/Http/Controllers/AuthController.php,
+               resources/views/auth/, database/migrations/0001_create_users_table.php]
+
+    - id: TM-02
+      title: "Implement register / login / logout"
+      branch: feature/TM-02-authentication
+      depends_on: TM-01
+
+  sprint_2_offers:
+    - id: TM-03
+      title: "Job offers CRUD (model, migration, controller, views)"
+      branch: feature/TM-03-job-offers-crud
+      files: [app/Models/JobOffer.php, app/Enums/JobOfferStatus.php,
+               app/Http/Controllers/JobOfferController.php,
+               app/Http/Requests/StoreJobOfferRequest.php,
+               database/migrations/0002_create_job_offers_table.php,
+               resources/views/offers/]
+
+    - id: TM-04
+      title: "JobOffer policy — restrict to owner"
+      branch: feature/TM-04-job-offer-policy
+      depends_on: TM-03
+
+  sprint_3_candidates:
+    - id: TM-05
+      title: "Candidate submission form + model + migration"
+      branch: feature/TM-05-candidate-submission
+      files: [app/Models/Candidate.php, app/Enums/CandidateStatus.php,
+               database/migrations/0003_create_candidates_table.php,
+               app/Http/Controllers/CandidateController.php,
+               app/Http/Requests/StoreCandidateRequest.php,
+               resources/views/candidates/create.blade.php]
+
+    - id: TM-06
+      title: "Analysis model + migration + Eloquent casts"
+      branch: feature/TM-06-analysis-model
+      files: [app/Models/Analysis.php, app/Enums/Recommendation.php,
+               database/migrations/0004_create_analyses_table.php]
+
+  sprint_4_ai_layer1:
+    - id: TM-07
+      title: "AnalyzeCandidateJob — queue job setup"
+      branch: feature/TM-07-analyze-job-queue
+      files: [app/Jobs/AnalyzeCandidateJob.php]
+
+    - id: TM-08
+      title: "AI structured output integration (CandidateAnalysisSchema)"
+      branch: feature/TM-08-structured-output
+      files: [app/AI/Schemas/CandidateAnalysisSchema.php,
+               app/AI/DTOs/AnalysisData.php]
+      depends_on: TM-07
+
+    - id: TM-09
+      title: "Candidate analysis detail view (score, recommendation, lists)"
+      branch: feature/TM-09-analysis-view
+      files: [resources/views/candidates/show.blade.php]
+      depends_on: TM-08
+
+  sprint_5_ai_layer2:
+    - id: TM-10
+      title: "Conversation + Message models + migrations"
+      branch: feature/TM-10-conversation-models
+      files: [app/Models/Conversation.php, app/Models/Message.php,
+               app/Enums/MessageRole.php,
+               database/migrations/0005_create_conversations_table.php,
+               database/migrations/0006_create_messages_table.php]
+
+    - id: TM-11
+      title: "AI agent tools — GetCandidateAnalysis, GetJobRequirements, CompareCandidates"
+      branch: feature/TM-11-agent-tools
+      files: [app/AI/Tools/GetCandidateAnalysisTool.php,
+               app/AI/Tools/GetJobRequirementsTool.php,
+               app/AI/Tools/CompareCandidatesTool.php]
+      depends_on: TM-10
+
+    - id: TM-12
+      title: "ChatController + conversation memory + agent integration"
+      branch: feature/TM-12-chat-agent
+      files: [app/Http/Controllers/ChatController.php,
+               app/Http/Requests/StoreChatMessageRequest.php,
+               resources/views/chat/show.blade.php]
+      depends_on: TM-11
+
+  sprint_6_bonus:
+    - id: TM-13
+      title: "Sort candidates by matching score (descending) on offer show page"
+      branch: feature/TM-13-candidate-ranking
+      depends_on: TM-09
+
+    - id: TM-14
+      title: "Compare two candidates via chat assistant tool"
+      branch: feature/TM-14-compare-candidates
+      depends_on: TM-12
+
+# =============================================================================
+# AGENTS.MD CONTENT (place at project root)
+# =============================================================================
+
+agents_md: |
+  # AGENTS.md
+
+  ## Project: TalentMatch
+  Laravel 11 HR pre-screening tool with AI analysis and conversational assistant.
+
+  ## Stack
+  - Laravel 11 + laravel/ai SDK
+  - MySQL (database), Redis (queues)
+  - Blade templates (no JS framework)
+  - Claude Sonnet 4.6 (structured output + agent)
+
+  ## AI usage in this project
+  - Layer 1: Structured output for CV analysis (JSON schema enforcement)
+  - Layer 2: Conversational agent with function-calling tools and DB-persisted memory
+
+  ## Dev workflow
+  - Spec-first: read config.yml before writing any file
+  - One Jira task = one GitHub branch = one focused PR
+  - Commit message format: [TM-XX] short description (AI-assisted)
+  - All AI-assisted work must be noted in the commit body
+
+  ## Key files the agent must know
+  - config.yml — canonical spec for all features
+  - app/AI/Schemas/CandidateAnalysisSchema.php — JSON contract
+  - app/AI/Tools/ — agent function-calling tools
+  - app/Jobs/AnalyzeCandidateJob.php — async AI processing
+
+  ## Constraints
+  - Never hardcode API keys (use .env)
+  - All AI calls go through laravel/ai driver (no direct HTTP calls)
+  - Analyses are always processed via queue (never sync in controller)
+  - Conversation messages are always persisted before sending to agent
+
+# =============================================================================
+# FILE TREE (target structure)
+# =============================================================================
+
+file_tree:
+  app:
+    AI:
+      DTOs:
+        - AnalysisData.php
+      Schemas:
+        - CandidateAnalysisSchema.php
+      Tools:
+        - GetCandidateAnalysisTool.php
+        - GetJobRequirementsTool.php
+        - CompareCandidatesTool.php
+    Enums:
+      - JobOfferStatus.php
+      - CandidateStatus.php
+      - Recommendation.php
+      - MessageRole.php
+    Http:
+      Controllers:
+        - AuthController.php
+        - JobOfferController.php
+        - CandidateController.php
+        - ChatController.php
+      Requests:
+        - StoreJobOfferRequest.php
+        - UpdateJobOfferRequest.php
+        - StoreCandidateRequest.php
+        - StoreChatMessageRequest.php
+    Jobs:
+      - AnalyzeCandidateJob.php
+    Models:
+      - User.php
+      - JobOffer.php
+      - Candidate.php
+      - Analysis.php
+      - Conversation.php
+      - Message.php
+    Policies:
+      - JobOfferPolicy.php
+  database:
+    migrations:
+      - 0001_create_users_table.php
+      - 0002_create_job_offers_table.php
+      - 0003_create_candidates_table.php
+      - 0004_create_analyses_table.php
+      - 0005_create_conversations_table.php
+      - 0006_create_messages_table.php
+  resources:
+    views:
+      layouts:
+        - app.blade.php
+      auth:
+        - register.blade.php
+        - login.blade.php
+      offers:
+        - index.blade.php
+        - create.blade.php
+        - edit.blade.php
+        - show.blade.php
+      candidates:
+        - create.blade.php
+        - show.blade.php
+      chat:
+        - show.blade.php
+  routes:
+    - web.php
+  AGENTS.md: (see agents_md section above)
+  config.yml: this file
