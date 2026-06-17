@@ -29,4 +29,12 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    /**
+     * Get the job offers for the user.
+     */
+    public function offers()
+    {
+        return $this->hasMany(JobOffer::class);
+    }
 }
