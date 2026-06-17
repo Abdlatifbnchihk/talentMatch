@@ -52,11 +52,11 @@ The system SHALL allow users to delete their job offers with confirmation.
 - **THEN** system removes the offer and redirects to the offers list
 
 ### Requirement: Data isolation by user
-The system SHALL ensure users can only access and modify their own job offers.
+The system SHALL ensure users can only access and modify their own job offers using Laravel Policy authorization.
 
 #### Scenario: Access control on job offers
 - **WHEN** user attempts to view, edit, or delete a job offer
-- **THEN** system verifies the offer belongs to the authenticated user and denies access if not
+- **THEN** system uses JobOfferPolicy to verify ownership and denies access with 403 if not authorized
 
 ### Requirement: Job offer status enum
 The system SHALL use a typed enum for job offer status with values "active" and "closed".

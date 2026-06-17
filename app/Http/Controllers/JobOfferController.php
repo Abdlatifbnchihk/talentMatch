@@ -43,7 +43,7 @@ class JobOfferController extends Controller
      */
     public function show(JobOffer $offer): View
     {
-        $this->authorizeOffer($offer);
+        $this->authorize('view', $offer);
 
         $offer->load('candidates.analysis');
 
@@ -55,7 +55,7 @@ class JobOfferController extends Controller
      */
     public function edit(JobOffer $offer): View
     {
-        $this->authorizeOffer($offer);
+        $this->authorize('update', $offer);
 
         return view('offers.edit', compact('offer'));
     }
@@ -65,7 +65,7 @@ class JobOfferController extends Controller
      */
     public function update(UpdateJobOfferRequest $request, JobOffer $offer): RedirectResponse
     {
-        $this->authorizeOffer($offer);
+        $this->authorize('update', $offer);
 
         $offer->update($request->validated());
 
@@ -77,20 +77,10 @@ class JobOfferController extends Controller
      */
     public function destroy(JobOffer $offer): RedirectResponse
     {
-        $this->authorizeOffer($offer);
+        $this->authorize('delete', $offer);
 
         $offer->delete();
 
         return redirect()->route('offers.index');
-    }
-
-    /**
-     * Authorize that the offer belongs to the authenticated user.
-     */
-    protected function authorizeOffer(JobOffer $offer): void
-    {
-        if ($offer->user_id !== auth()->id()) {
-            abort(403);
-        }
     }
 }
