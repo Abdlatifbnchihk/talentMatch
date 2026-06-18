@@ -52,7 +52,7 @@ class CandidateController extends Controller
      */
     public function show(JobOffer $offer, Candidate $candidate): View
     {
-        $candidate->load('analysis');
+        $candidate->load('analyses');
 
         return view('candidates.show', compact('offer', 'candidate'));
     }
