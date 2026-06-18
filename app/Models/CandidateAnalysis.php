@@ -10,6 +10,8 @@ class CandidateAnalysis extends Model
 {
     use HasFactory;
 
+    protected $table = 'analyses';
+
     /**
      * Get the candidate that owns the analysis.
      */

@@ -18,6 +18,9 @@
                     <x-nav-link :href="route('offers.index')" :active="request()->routeIs('offers.*')">
                         {{ __('Job Offers') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('candidates.index')" :active="request()->routeIs('candidates.*')">
+                        {{ __('Candidates') }}
+                    </x-nav-link>
                 </div>
             </div>
 
@@ -75,6 +78,9 @@
             </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('offers.index')" :active="request()->routeIs('offers.*')">
                 {{ __('Job Offers') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('candidates.index')" :active="request()->routeIs('candidates.*')">
+                {{ __('Candidates') }}
             </x-responsive-nav-link>
         </div>
 

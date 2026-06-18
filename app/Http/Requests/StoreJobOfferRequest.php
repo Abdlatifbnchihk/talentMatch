@@ -24,19 +24,14 @@ class StoreJobOfferRequest extends FormRequest
     }
 
     /**
-     * Configure the validator instance.
-     *
-     * @param  \Illuminate\Validation\Validator  $validator
-     * @return void
+     * Prepare the data for validation.
      */
-    public function withValidator($validator): void
+    protected function prepareForValidation(): void
     {
-        $validator->after(function ($validator) {
-            if (is_string($this->required_skills)) {
-                $this->merge([
-                    'required_skills' => array_filter(array_map('trim', explode(',', $this->required_skills))),
-                ]);
-            }
-        });
+        if (is_string($this->required_skills)) {
+            $this->merge([
+                'required_skills' => array_filter(array_map('trim', explode(',', $this->required_skills))),
+            ]);
+        }
     }
 }
