@@ -6,6 +6,8 @@ use App\Enums\CandidateStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Candidate extends Model
 {
@@ -26,10 +28,18 @@ class Candidate extends Model
     }
 
     /**
-     * Get the analysis for the candidate.
+     * Get all analyses for the candidate.
      */
-    public function analysis()
+    public function analyses(): HasMany
     {
-        return $this->hasOne(CandidateAnalysis::class);
+        return $this->hasMany(Analysis::class);
+    }
+
+    /**
+     * Get the latest analysis for the candidate.
+     */
+    public function latestAnalysis(): HasOne
+    {
+        return $this->hasOne(Analysis::class)->latestOfMany();
     }
 }
