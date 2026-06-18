@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CandidateController;
 use App\Http\Controllers\JobOfferController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
@@ -17,6 +18,8 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::resource('offers', JobOfferController::class);
+    Route::get('candidates', [CandidateController::class, 'index'])->name('candidates.index');
+    Route::resource('offers.candidates', CandidateController::class)->except(['index']);
 });
 
 require __DIR__.'/auth.php';

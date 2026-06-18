@@ -29,9 +29,12 @@
                             @enderror
                         </div>
 
+                        @php
+                            $skillsArray = is_array($offer->required_skills) ? $offer->required_skills : (is_string($offer->required_skills) ? array_filter(array_map('trim', explode(',', $offer->required_skills))) : []);
+                        @endphp
                         <div class="mb-4">
                             <label for="required_skills" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('Required Skills (comma-separated)') }}</label>
-                            <input type="text" name="required_skills" id="required_skills" value="{{ is_array(old('required_skills')) ? implode(', ', old('required_skills')) : old('required_skills', implode(', ', $offer->required_skills)) }}" class="mt-1 block w-full border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 rounded-md shadow-sm" placeholder="e.g., PHP, Laravel, MySQL" required>
+                            <input type="text" name="required_skills" id="required_skills" value="{{ is_array(old('required_skills')) ? implode(', ', old('required_skills')) : old('required_skills', implode(', ', $skillsArray)) }}" class="mt-1 block w-full border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 rounded-md shadow-sm" placeholder="e.g., PHP, Laravel, MySQL" required>
                             @error('required_skills')
                                 <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                             @enderror
