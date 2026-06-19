@@ -42,8 +42,6 @@ class AnalyzeCandidateJob implements ShouldQueue
     public function handle(CandidateAnalysisService $analysisService): void
     {
         try {
-            $this->candidate->load('jobOffer');
-
             $result = $analysisService->analyze($this->candidate);
 
             if ($result === null) {
@@ -55,16 +53,16 @@ class AnalyzeCandidateJob implements ShouldQueue
 
             Analysis::create([
                 'candidate_id' => $this->candidate->id,
-                'extracted_skills' => $result['extracted_skills'] ?? [],
-                'years_experience' => $result['years_experience'] ?? 0,
-                'education_level' => $result['education_level'] ?? null,
-                'languages' => $result['languages'] ?? [],
-                'matching_score' => $result['matching_score'] ?? 0,
-                'strengths' => $result['strengths'] ?? [],
-                'gaps' => $result['gaps'] ?? [],
-                'missing_skills' => $result['missing_skills'] ?? [],
-                'recommendation' => $result['recommendation'] ?? null,
-                'justification' => $result['justification'] ?? null,
+                'extracted_skills' => $result->extracted_skills,
+                'years_experience' => $result->years_experience,
+                'education_level' => $result->education_level,
+                'languages' => $result->languages,
+                'matching_score' => $result->matching_score,
+                'strengths' => $result->strengths,
+                'gaps' => $result->gaps,
+                'missing_skills' => $result->missing_skills,
+                'recommendation' => $result->recommendation,
+                'justification' => $result->justification,
             ]);
 
             $this->candidate->update(['status' => CandidateStatus::Analyzed]);
