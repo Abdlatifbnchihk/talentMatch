@@ -90,9 +90,9 @@
                                                     {{ $candidate->name }}
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap">
-                                                    @if($candidate->analysis)
-                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $candidate->analysis->matching_score >= 80 ? 'bg-green-100 text-green-800' : ($candidate->analysis->matching_score >= 50 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800') }}">
-                                                            {{ $candidate->analysis->matching_score }}%
+                                                    @if($candidate->latestAnalysis)
+                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $candidate->latestAnalysis->matching_score >= 80 ? 'bg-green-100 text-green-800' : ($candidate->latestAnalysis->matching_score >= 50 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800') }}">
+                                                            {{ $candidate->latestAnalysis->matching_score }}%
                                                         </span>
                                                     @else
                                                         <span class="text-gray-400 dark:text-gray-500">—</span>

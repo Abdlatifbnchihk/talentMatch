@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\CandidateStatus;
 use App\Http\Requests\StoreCandidateRequest;
 use App\Jobs\AnalyzeCandidateJob;
 use App\Models\Candidate;
@@ -41,7 +42,7 @@ class CandidateController extends Controller
     {
         $candidate = $offer->candidates()->create($request->validated());
 
-        AnalyzeCandidateJob::dispatch($candidate);
+        AnalyzeCandidateJob::dispatch($candidate->id);
 
         return redirect()->route('offers.show', $offer)
             ->with('success', 'Candidate submitted successfully!');
@@ -52,9 +53,15 @@ class CandidateController extends Controller
      */
     public function show(JobOffer $offer, Candidate $candidate): View
     {
-        $candidate->load('analyses');
+        $candidate->load(['jobOffer', 'latestAnalysis']);
 
-        return view('candidates.show', compact('offer', 'candidate'));
+        if ($candidate->status === CandidateStatus::Pending) {
+            return view('candidates.show-pending', compact('offer', 'candidate'));
+        }
+
+        $analysis = $candidate->latestAnalysis;
+
+        return view('candidates.show', compact('offer', 'candidate', 'analysis'));
     }
 
     /**
