@@ -31,7 +31,7 @@ class AnalyzeCandidateJob implements ShouldQueue
      * Create a new job instance.
      */
     public function __construct(
-        public Candidate $candidate
+        public int $candidateId
     ) {
         $this->queue = 'ai-analysis';
     }
@@ -41,8 +41,17 @@ class AnalyzeCandidateJob implements ShouldQueue
      */
     public function handle(CandidateAnalysisService $analysisService): void
     {
+        $candidate = Candidate::find($this->candidateId);
+
+        if (! $candidate) {
+            Log::error("Candidate {$this->candidateId} not found, skipping analysis.");
+            $this->fail();
+
+            return;
+        }
+
         try {
-            $result = $analysisService->analyze($this->candidate);
+            $result = $analysisService->analyze($candidate);
 
             if ($result === null) {
                 Log::error("CandidateAnalysisService returned null for candidate {$this->candidate->id}");
@@ -52,7 +61,7 @@ class AnalyzeCandidateJob implements ShouldQueue
             }
 
             Analysis::create([
-                'candidate_id' => $this->candidate->id,
+                'candidate_id' => $candidate->id,
                 'extracted_skills' => $result->extracted_skills,
                 'years_experience' => $result->years_experience,
                 'education_level' => $result->education_level,
@@ -65,9 +74,9 @@ class AnalyzeCandidateJob implements ShouldQueue
                 'justification' => $result->justification,
             ]);
 
-            $this->candidate->update(['status' => CandidateStatus::Analyzed]);
+            $candidate->update(['status' => CandidateStatus::Analyzed]);
         } catch (\Exception $e) {
-            Log::error("Analysis failed for candidate {$this->candidate->id}: {$e->getMessage()}");
+            Log::error("Analysis failed for candidate {$candidate->id}: {$e->getMessage()}");
             $this->fail($e);
         }
     }

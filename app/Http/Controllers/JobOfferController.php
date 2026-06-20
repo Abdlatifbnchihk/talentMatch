@@ -45,7 +45,7 @@ class JobOfferController extends Controller
     {
         $this->authorize('view', $offer);
 
-        $offer->load('candidates.analyses');
+        $offer->load('candidates.latestAnalysis');
 
         return view('offers.show', compact('offer'));
     }

@@ -3,13 +3,27 @@
 namespace App\Services;
 
 use App\AI\DTOs\AnalysisData;
-use App\AI\Schemas\CandidateAnalysisSchema;
 use App\Models\Candidate;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Laravel\Ai\Ai;
 
 class CandidateAnalysisService
 {
+    private const SYSTEM_PROMPT = <<<'PROMPT'
+You are an expert HR analyst. Analyze the candidate CV against the job offer.
+Return ONLY a valid JSON object with no markdown or extra text. The JSON must contain these fields:
+- extracted_skills: array of strings
+- years_experience: integer
+- education_level: string
+- languages: array of strings
+- matching_score: integer between 0 and 100
+- strengths: array of strings
+- gaps: array of strings
+- missing_skills: array of strings
+- recommendation: one of "convoquer", "attente", "rejeter"
+- justification: string
+PROMPT;
+
     /**
      * Analyze a candidate's CV against their job offer using AI.
      */
@@ -18,41 +32,45 @@ class CandidateAnalysisService
         $candidate->load('jobOffer');
 
         $jobOffer = $candidate->jobOffer;
+        $skills = implode(', ', $jobOffer->required_skills ?? []);
 
-        $prompt = <<<'PROMPT'
-You are an expert HR analyst. Analyze the CV against this job offer.
-
-JOB OFFER: {title}
-REQUIRED SKILLS: {required_skills}
-MINIMUM EXPERIENCE: {min_experience_years} years
-DESCRIPTION: {description}
+        $userMessage = <<<MSG
+JOB OFFER: {$jobOffer->title}
+REQUIRED SKILLS: {$skills}
+MINIMUM EXPERIENCE: {$jobOffer->min_experience_years} years
+DESCRIPTION: {$jobOffer->description}
 
 CANDIDATE CV:
-{cv_text}
+{$candidate->cv_text}
+MSG;
 
-Return only the JSON analysis. Be objective and base all judgments on the CV content only.
-PROMPT;
+        $apiKey = config('services.groq.key', env('GROQ_API_KEY'));
+        $baseUrl = 'https://api.groq.com/openai/v1';
 
-        $prompt = str_replace(
-            ['{title}', '{required_skills}', '{min_experience_years}', '{description}', '{cv_text}'],
-            [
-                $jobOffer->title,
-                implode(', ', $jobOffer->required_skills ?? []),
-                $jobOffer->min_experience_years,
-                $jobOffer->description,
-                $candidate->cv_text,
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $apiKey,
+            'Content-Type' => 'application/json',
+        ])->timeout(60)->post("{$baseUrl}/chat/completions", [
+            'model' => 'llama-3.3-70b-versatile',
+            'messages' => [
+                ['role' => 'system', 'content' => self::SYSTEM_PROMPT],
+                ['role' => 'user', 'content' => $userMessage],
             ],
-            $prompt
-        );
+            'temperature' => 0.3,
+            'response_format' => ['type' => 'json_object'],
+        ]);
 
-        $schema = new CandidateAnalysisSchema;
+        if ($response->failed()) {
+            Log::error("Groq API error for candidate {$candidate->id}: " . $response->body());
 
-        $response = Ai::text()->prompt($prompt, schema: $schema);
+            return null;
+        }
 
-        $data = $response->object();
+        $content = $response->json('choices.0.message.content', '');
+        $data = json_decode($content, true);
 
-        if ($data === null) {
-            Log::error("AI returned null for candidate {$candidate->id}");
+        if ($data === null || json_last_error() !== JSON_ERROR_NONE) {
+            Log::error("Invalid JSON from AI for candidate {$candidate->id}: {$content}");
 
             return null;
         }
