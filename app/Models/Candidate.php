@@ -42,4 +42,12 @@ class Candidate extends Model
     {
         return $this->hasOne(Analysis::class)->latestOfMany();
     }
+
+    /**
+     * Get the conversations for the candidate.
+     */
+    public function conversations(): HasMany
+    {
+        return $this->hasMany(Conversation::class);
+    }
 }
