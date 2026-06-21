@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CandidateController;
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\JobOfferController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
@@ -10,7 +11,7 @@ Route::get('/', function () {
 });
 
 Route::get('/dashboard', function () {
-    return view('dashboard');
+    return redirect()->route('offers.index');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware('auth')->group(function () {
@@ -20,6 +21,8 @@ Route::middleware('auth')->group(function () {
     Route::resource('offers', JobOfferController::class);
     Route::get('candidates', [CandidateController::class, 'index'])->name('candidates.index');
     Route::resource('offers.candidates', CandidateController::class)->except(['index']);
+    Route::get('candidates/{candidate}/chat', [ChatController::class, 'show'])->name('candidates.chat.show');
+    Route::post('candidates/{candidate}/chat', [ChatController::class, 'message'])->name('candidates.chat.message');
 });
 
 require __DIR__.'/auth.php';
